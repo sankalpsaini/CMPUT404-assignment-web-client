@@ -33,21 +33,30 @@ class HTTPResponse(object):
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
+    def get_host_port(self,url):
+        port = urllib.parse.urlparse(url).port
+        if port is None:
+            port = 80
+        hostname = urllib.parse.urlparse(url).hostname
+        return hostname, port
 
     def connect(self, host, port):
+        # Connect to socket with specified host and port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((host, port))
         return None
 
     def get_code(self, data):
-        return None
+        code = int(data[9:12])
+        return code
 
     def get_headers(self,data):
         return None
 
     def get_body(self, data):
-        return None
+        data_list = data.split('\r\n\r\n')
+        body = data_list[1]
+        return body
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -66,10 +75,39 @@ class HTTPClient(object):
             else:
                 done = not part
         return buffer.decode('utf-8')
+        # part = sock.recv(1024)
+        # result = b'' + part
+        
+        # while len(part) > 0:
+        #     part = sock.recv(1024)
+        #     result += part
+        # return result
 
     def GET(self, url, args=None):
-        code = 500
-        body = ""
+        hostname, port = self.get_host_port(url)
+
+        print("Connecting........")
+        self.connect(hostname, port)
+
+        host_extra_path = urllib.parse.urlparse(url).path
+        if not host_extra_path:
+            host_extra_path = "/"
+
+        message = "GET "+host_extra_path+" HTTP/1.1\r\nHost: " + hostname + "\r\nUser-Agent:Linux\r\nConnection: close\r\n\r\n"
+        # message = "GET "+host_extra_path+" HTTP/1.1\n" + hostname + "\n\n"
+
+        self.sendall(message)
+        # self.socket.shutdown(socket.SHUT_WR)
+
+        response = self.recvall(self.socket)
+
+        code = self.get_code(response)
+        body = self.get_body(response)
+
+        print(str(code) + '\n' + body)
+
+        self.close()
+        
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
@@ -90,6 +128,6 @@ if __name__ == "__main__":
         help()
         sys.exit(1)
     elif (len(sys.argv) == 3):
-        print(client.command( sys.argv[2], sys.argv[1] ))
+        print(client.command(sys.argv[2], sys.argv[1]))
     else:
         print(client.command( sys.argv[1] ))
