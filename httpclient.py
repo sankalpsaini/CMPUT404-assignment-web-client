@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # coding: utf-8
 # Copyright 2016 Abram Hindle, https://github.com/tywtyw2002, and https://github.com/treedust
-# 
+# Copyright 2023 Sankalp Saini
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -35,10 +36,13 @@ class HTTPResponse(object):
 class HTTPClient(object):
     def get_host_port(self,url):
         port = urllib.parse.urlparse(url).port
+        host_extra_path = urllib.parse.urlparse(url).path
         if port is None:
             port = 80
+        if not host_extra_path:
+            host_extra_path = "/"
         hostname = urllib.parse.urlparse(url).hostname
-        return hostname, port
+        return hostname, port, host_extra_path
 
     def connect(self, host, port):
         # Connect to socket with specified host and port
@@ -47,9 +51,10 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        code = int(data[9:12])
-        return code
+        code = data.split(" ")[1]
+        return int(code)
 
+    # Don't believe this was needed
     def get_headers(self,data):
         return None
 
@@ -75,44 +80,55 @@ class HTTPClient(object):
             else:
                 done = not part
         return buffer.decode('utf-8')
-        # part = sock.recv(1024)
-        # result = b'' + part
-        
-        # while len(part) > 0:
-        #     part = sock.recv(1024)
-        #     result += part
-        # return result
 
     def GET(self, url, args=None):
-        hostname, port = self.get_host_port(url)
+        hostname, port, host_extra_path = self.get_host_port(url)
 
-        print("Connecting........")
         self.connect(hostname, port)
 
-        host_extra_path = urllib.parse.urlparse(url).path
-        if not host_extra_path:
-            host_extra_path = "/"
-
-        message = "GET "+host_extra_path+" HTTP/1.1\r\nHost: " + hostname + "\r\nUser-Agent:Linux\r\nConnection: close\r\n\r\n"
-        # message = "GET "+host_extra_path+" HTTP/1.1\n" + hostname + "\n\n"
+        message = "GET "+host_extra_path+" HTTP/1.1\r\nHost: " + hostname + "\r\nConnection: close\r\n\r\n"
 
         self.sendall(message)
-        # self.socket.shutdown(socket.SHUT_WR)
 
         response = self.recvall(self.socket)
 
+        # get the code and body
         code = self.get_code(response)
         body = self.get_body(response)
 
-        print(str(code) + '\n' + body)
+        print("HTTP Code: " + str(code) + '\nBody Message: ' + body)
 
         self.close()
         
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
-        code = 500
-        body = ""
+        hostname, port, host_extra_path = self.get_host_port(url)
+
+        self.connect(hostname, port)
+
+        if args:
+            args = urllib.parse.urlencode(args)
+            content_length = str(len(args))
+        else:
+            content_length = "0"
+
+        if not args:
+            message = "POST "+host_extra_path+" HTTP/1.1\r\nHost: "+hostname+"\r\nContent-Type: application/x-www-form-urlencoded\r\nUser-Agent:Linux\r\nContent-Length: "+content_length+"\r\nConnection: close\r\n\r\n"
+        else:
+            message = "POST "+host_extra_path+" HTTP/1.1\r\nHost: "+hostname+"\r\nContent-Type: application/x-www-form-urlencoded\r\nUser-Agent:Linux\r\nContent-Length: "+content_length+"\r\nConnection: close\r\n\r\n"+args+"\r\n\r\n"
+        self.sendall(message)
+
+        response = self.recvall(self.socket)
+
+        # get the code and body
+        code = self.get_code(response)
+        body = self.get_body(response)
+
+        print("HTTP Code: " + str(code) + '\nBody Message: ' + body)
+
+        self.close()
+
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
